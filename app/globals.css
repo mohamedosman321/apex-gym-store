@@ -1,0 +1,75 @@
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800;900&family=Barlow:wght@300;400;500;600&display=swap');
+@import "tailwindcss";
+
+:root {
+  --bg: #0a0a0a;
+  --bg2: #111111;
+  --bg3: #1a1a1a;
+  --card: #141414;
+  --border: #2a2a2a;
+  --accent: #e8ff00;
+  --accent2: #ff3c3c;
+  --text: #f0f0f0;
+  --muted: #888;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Barlow', sans-serif;
+  font-weight: 400;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,h2,h3,h4,h5,h6 {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+a { color: inherit; text-decoration: none; }
+
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: var(--bg2); }
+::-webkit-scrollbar-thumb { background: var(--border); }
+::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+
+.geo-bg {
+  background-image:
+    linear-gradient(45deg,#ffffff04 25%,transparent 25%),
+    linear-gradient(-45deg,#ffffff04 25%,transparent 25%),
+    linear-gradient(45deg,transparent 75%,#ffffff04 75%),
+    linear-gradient(-45deg,transparent 75%,#ffffff04 75%);
+  background-size:20px 20px;
+  background-position:0 0,0 10px,10px -10px,-10px 0px;
+}
+
+.accent-line {
+  height:2px;
+  background:linear-gradient(90deg,var(--accent),var(--accent2),var(--accent));
+  background-size:200% 100%;
+  animation:shimmer 3s linear infinite;
+}
+
+@keyframes shimmer {
+  0%{background-position:0% 0%;}
+  100%{background-position:200% 0%;}
+}
+
+input,select,textarea {
+  background:var(--bg3);
+  border:1px solid var(--border);
+  color:var(--text);
+  padding:0.75rem 1rem;
+  font-family:'Barlow',sans-serif;
+  font-size:0.95rem;
+  outline:none;
+  width:100%;
+  transition:border-color 0.15s;
+  border-radius:0;
+}
+input:focus,select:focus,textarea:focus { border-color:var(--accent); }
+input::placeholder { color:var(--muted); }
