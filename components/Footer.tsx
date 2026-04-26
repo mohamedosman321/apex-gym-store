@@ -1,3 +1,6 @@
+"use client";
+import Link from "next/link";
+
 export default function Footer() {
   return (
     <footer style={{ background: "#0d0d0d", borderTop: "1px solid #2a2a2a", padding: "3rem 1.5rem 2rem" }}>
@@ -8,14 +11,14 @@ export default function Footer() {
         </div>
         <div>
           <h4 style={{ fontSize: "1rem", marginBottom: "1rem", color: "#f0f0f0" }}>Shop</h4>
-          {["Tops","Bottoms","Outerwear","Accessories"].map(c => (
-            <a key={c} href={`/shop?category=${c.toLowerCase()}`} style={{ display: "block", color: "#888", fontSize: "0.875rem", marginBottom: "0.5rem" }}>{c}</a>
+          {[["Tops", "tops"], ["Bottoms", "bottoms"], ["Outerwear", "outerwear"], ["Accessories", "accessories"]].map(([label, cat]) => (
+            <Link key={cat} href={`/shop?category=${cat}`} style={{ display: "block", color: "#888", fontSize: "0.875rem", marginBottom: "0.5rem" }}>{label}</Link>
           ))}
         </div>
         <div>
           <h4 style={{ fontSize: "1rem", marginBottom: "1rem", color: "#f0f0f0" }}>Account</h4>
           {[["Login", "/auth/login"], ["Register", "/auth/register"], ["My Orders", "/account"], ["Cart", "/cart"]].map(([label, href]) => (
-            <a key={label} href={href} style={{ display: "block", color: "#888", fontSize: "0.875rem", marginBottom: "0.5rem" }}>{label}</a>
+            <Link key={label} href={href} style={{ display: "block", color: "#888", fontSize: "0.875rem", marginBottom: "0.5rem" }}>{label}</Link>
           ))}
         </div>
         <div>
