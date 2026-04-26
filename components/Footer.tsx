@@ -14,8 +14,8 @@ export default function Footer() {
         </div>
         <div>
           <h4 style={{ fontSize: "1rem", marginBottom: "1rem", color: "#f0f0f0" }}>Account</h4>
-          {["Login","Register","My Orders","Cart"].map(l => (
-            <a key={l} href={`/${l.toLowerCase().replace(" ","/").replace("my/","account")}`} style={{ display: "block", color: "#888", fontSize: "0.875rem", marginBottom: "0.5rem" }}>{l}</a>
+          {[["Login", "/auth/login"], ["Register", "/auth/register"], ["My Orders", "/account"], ["Cart", "/cart"]].map(([label, href]) => (
+            <a key={label} href={href} style={{ display: "block", color: "#888", fontSize: "0.875rem", marginBottom: "0.5rem" }}>{label}</a>
           ))}
         </div>
         <div>
