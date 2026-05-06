@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/mongodb";
 import Order from "@/models/Order";
+import Product from "@/models/Product";
 import { verifyToken } from "@/lib/auth";
 
 export async function GET(req: NextRequest) {
@@ -25,6 +26,15 @@ export async function POST(req: NextRequest) {
 
     await connectDB();
     const data = await req.json();
+
+    // Reduce stock for each item ordered
+    for (const item of data.items) {
+      await Product.findByIdAndUpdate(
+        item.productId,
+        { $inc: { stock: -item.quantity } }
+      );
+    }
+
     const order = await Order.create({ ...data, userId: payload.userId });
     return NextResponse.json(order, { status: 201 });
   } catch {
