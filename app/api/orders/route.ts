@@ -5,9 +5,6 @@ import Order from "@/models/Order";
 import Product from "@/models/Product";
 import { verifyToken } from "@/lib/auth";
 
-/* ------------------------------------------------------------------ */
-// Helper: safely extract Bearer token
-/* ------------------------------------------------------------------ */
 function getBearerToken(req: NextRequest): string | null {
   const auth = req.headers.get("authorization");
   if (!auth) return null;
@@ -15,68 +12,47 @@ function getBearerToken(req: NextRequest): string | null {
   return scheme === "Bearer" && token ? token : null;
 }
 
-/* ------------------------------------------------------------------ */
-// Helper: validate MongoDB ObjectId
-/* ------------------------------------------------------------------ */
 function isValidObjectId(id: string): boolean {
   return mongoose.Types.ObjectId.isValid(id);
 }
 
-/* ================================================================== */
-// GET  /api/orders
-/* ================================================================== */
 export async function GET(req: NextRequest) {
   try {
     const token = getBearerToken(req);
     const payload = token ? verifyToken(token) : null;
-
     if (!payload?.userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     await connectDB();
-
     const orders = await Order.find({ userId: payload.userId })
       .sort({ createdAt: -1 })
-      .lean(); // faster, read-only objects
+      .lean();
 
     return NextResponse.json({ orders });
   } catch (error) {
     console.error("[GET /api/orders]", error);
-    return NextResponse.json(
-      { error: "Failed to fetch orders" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to fetch orders" }, { status: 500 });
   }
 }
 
-/* ================================================================== */
-// POST  /api/orders
-/* ================================================================== */
 export async function POST(req: NextRequest) {
-  let session: mongoose.ClientSession | null = null;
-
   try {
-    /* 1. AUTH ------------------------------------------------------ */
+    /* 1. AUTH */
     const token = getBearerToken(req);
     const payload = token ? verifyToken(token) : null;
-
     if (!payload?.userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    /* 2. PARSE BODY ------------------------------------------------ */
+    /* 2. PARSE BODY */
     let body: Record<string, unknown>;
     try {
       body = await req.json();
     } catch {
-      return NextResponse.json(
-        { error: "Invalid JSON body" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
 
-    /* 3. VALIDATE TOP-LEVEL FIELDS --------------------------------- */
     const items = body.items;
     if (!Array.isArray(items) || items.length === 0) {
       return NextResponse.json(
@@ -93,116 +69,125 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    /* 4. START TRANSACTION ----------------------------------------- */
     await connectDB();
-    session = await mongoose.startSession();
-    session.startTransaction();
 
     const orderItems = [];
     let subtotal = 0;
 
-    /* 5. PROCESS EACH ITEM ----------------------------------------- */
+    /* 3. VALIDATE ALL ITEMS FIRST (no DB writes yet) */
+    const productsToUpdate: Array<{
+      product: mongoose.Document & { _id: mongoose.Types.ObjectId; name: string; price: number; stock: number; sizes: string[]; images: string[] };
+      quantity: number;
+      requestedSize?: string;
+    }> = [];
+
     for (const raw of items) {
       const item = raw as Record<string, unknown>;
       const productId = String(item.productId ?? "");
 
-      // --- validate IDs & quantity ---
       if (!isValidObjectId(productId)) {
-        throw new Error(`Invalid product ID: ${productId}`);
+        return NextResponse.json(
+          { error: `Invalid product ID: ${productId}` },
+          { status: 400 }
+        );
       }
 
       const qty = Number(item.quantity);
       if (!Number.isInteger(qty) || qty < 1) {
-        throw new Error(`Invalid quantity for product ${productId}`);
+        return NextResponse.json(
+          { error: `Invalid quantity for product ${productId}` },
+          { status: 400 }
+        );
       }
 
-      // --- fetch product (within transaction) ---
-      const product = await Product.findById(productId).session(session);
+      // Fetch product fresh from DB
+      const product = await Product.findById(productId);
       if (!product) {
-        throw new Error(`Product not found: ${productId}`);
+        return NextResponse.json(
+          { error: `Product not found: ${productId}` },
+          { status: 400 }
+        );
       }
 
-      // --- validate size if provided ---
+      // Check stock BEFORE any write
+      if (product.stock < qty) {
+        return NextResponse.json(
+          {
+            error: `Insufficient stock for "${product.name}". Available: ${product.stock}, Requested: ${qty}`,
+          },
+          { status: 409 }
+        );
+      }
+
       const requestedSize = item.size ? String(item.size) : undefined;
       if (
         requestedSize &&
         product.sizes.length > 0 &&
         !product.sizes.includes(requestedSize)
       ) {
-        throw new Error(
-          `Size "${requestedSize}" is not available for ${product.name}`
+        return NextResponse.json(
+          { error: `Size "${requestedSize}" is not available for ${product.name}` },
+          { status: 400 }
         );
       }
 
-      // --- atomic stock check & decrement ---
-      const updatedProduct = await Product.findOneAndUpdate(
-        { _id: productId, stock: { $gte: qty } },
-        { $inc: { stock: -qty } },
-        { session, new: true }
-      );
+      productsToUpdate.push({ product, quantity: qty, requestedSize });
+    }
 
-      if (!updatedProduct) {
-        throw new Error(
-          `Insufficient stock for "${product.name}". Available: ${product.stock}, Requested: ${qty}`
+    /* 4. ATOMIC STOCK DECREMENT (one operation per product, no session needed) */
+    const stockDecrements = productsToUpdate.map(({ product, quantity }) =>
+      Product.findOneAndUpdate(
+        { _id: product._id, stock: { $gte: quantity } },
+        { $inc: { stock: -quantity } },
+        { new: true }
+      )
+    );
+
+    const updatedProducts = await Promise.all(stockDecrements);
+
+    // Verify all succeeded — if any failed, another request raced us
+    for (let i = 0; i < updatedProducts.length; i++) {
+      if (!updatedProducts[i]) {
+        const { product, quantity } = productsToUpdate[i];
+        return NextResponse.json(
+          {
+            error: `Insufficient stock for "${product.name}". Requested: ${quantity}`,
+          },
+          { status: 409 }
         );
       }
+    }
 
-      // --- build order item from DB data (prevents price tampering) ---
+    /* 5. BUILD ORDER ITEMS FROM DB DATA (tamper-proof) */
+    for (let i = 0; i < productsToUpdate.length; i++) {
+      const { product, quantity, requestedSize } = productsToUpdate[i];
       const linePrice = product.price;
-      subtotal += linePrice * qty;
+      subtotal += linePrice * quantity;
 
       orderItems.push({
         productId: product._id,
         name: product.name,
         price: linePrice,
         size: requestedSize || product.sizes[0] || "",
-        quantity: qty,
+        quantity,
         image: product.images[0] || "",
       });
     }
 
-    /* 6. CREATE ORDER (server-calculated fields) ------------------- */
-    const [createdOrder] = await Order.create(
-      [
-        {
-          userId: new mongoose.Types.ObjectId(payload.userId),
-          items: orderItems,
-          subtotal,
-          total: subtotal, // add shipping/tax here later if needed
-          status: "pending",
-          shippingAddress,
-        },
-      ],
-      { session }
-    );
+    /* 6. CREATE ORDER */
+    const order = await Order.create({
+      userId: new mongoose.Types.ObjectId(payload.userId),
+      items: orderItems,
+      subtotal,
+      total: subtotal,
+      status: "pending",
+      shippingAddress,
+    });
 
-    await session.commitTransaction();
-
-    return NextResponse.json(createdOrder, { status: 201 });
+    return NextResponse.json(order, { status: 201 });
   } catch (error) {
-    if (session) {
-      await session.abortTransaction().catch(() => {});
-    }
-
     console.error("[POST /api/orders]", error);
-
-    const message =
-      error instanceof Error ? error.message : "Server error";
-
-    // Return 400 for client errors (stock, validation), 500 for real server errors
-    const isClientError =
-      message.includes("stock") ||
-      message.includes("not found") ||
-      message.includes("Invalid") ||
-      message.includes("not available");
-
-    return NextResponse.json(
-      { error: message },
-      { status: isClientError ? 400 : 500 }
-    );
-  } finally {
-    if (session) {
-      session.endSession();
-    }
+    const message = error instanceof Error ? error.message : "Server error";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
