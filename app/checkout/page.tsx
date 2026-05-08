@@ -9,7 +9,7 @@ export default function CheckoutPage() {
   const { cart, cartTotal, clearCart, token, user } = useStore();
   const total = cartTotal();
   const shipping = total >= 2999 ? 0 : 99;
-  const tax = total * 0.1;
+  const tax = Math.round(total * 0.1);
   const grandTotal = total + shipping + tax;
 
   const [form, setForm] = useState({ fullName: "", address: "", city: "", country: "Egypt", zip: "" });
@@ -33,11 +33,12 @@ export default function CheckoutPage() {
           shippingAddress: form,
         }),
       });
-      if (!res.ok) throw new Error("Order failed");
+      const resData = await res.json();
+      if (!res.ok) throw new Error(resData.error || "Order failed");
       clearCart();
       router.push("/account?ordered=1");
-    } catch {
-      setError("Failed to place order. Please try again.");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to place order. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -59,8 +60,8 @@ export default function CheckoutPage() {
     </div>
   );
 
-  const inp = { display: "block", width: "100%", background: "#1a1a1a", border: "1px solid #2a2a2a", color: "#f0f0f0", padding: "0.875rem 1rem", fontFamily: "'Barlow',sans-serif", fontSize: "0.95rem", outline: "none", marginBottom: "1rem" };
-  const label = { fontFamily: "'Barlow Condensed',sans-serif", fontWeight: 700, fontSize: "0.8rem", textTransform: "uppercase" as const, letterSpacing: "0.1em", color: "#888", display: "block", marginBottom: "0.4rem" };
+  const inp: React.CSSProperties = { display: "block", width: "100%", background: "#1a1a1a", border: "1px solid #2a2a2a", color: "#f0f0f0", padding: "0.875rem 1rem", fontFamily: "'Barlow',sans-serif", fontSize: "0.95rem", outline: "none", marginBottom: "1rem" };
+  const label: React.CSSProperties = { fontFamily: "'Barlow Condensed',sans-serif", fontWeight: 700, fontSize: "0.8rem", textTransform: "uppercase" as const, letterSpacing: "0.1em", color: "#888", display: "block", marginBottom: "0.4rem" };
 
   return (
     <div style={s}>
@@ -83,15 +84,22 @@ export default function CheckoutPage() {
                   </div>
                 ))}
 
-                {error && <p style={{ color: "#ff3c3c", fontFamily: "'Barlow Condensed',sans-serif", fontWeight: 700, fontSize: "0.9rem", marginBottom: "1rem" }}>{error}</p>}
+                {error && (
+                  <div style={{ background: "#ff3c3c15", border: "1px solid #ff3c3c50", padding: "0.875rem 1rem", marginBottom: "1rem", borderRadius: "2px" }}>
+                    <p style={{ color: "#ff3c3c", fontFamily: "'Barlow Condensed',sans-serif", fontWeight: 700, fontSize: "0.95rem", margin: 0 }}>
+                      ⚠ {error}
+                    </p>
+                  </div>
+                )}
 
                 <div style={{ background: "#1a1a1a", border: "1px solid #2a2a2a", padding: "1rem", marginBottom: "1.5rem" }}>
                   <p style={{ color: "#888", fontSize: "0.85rem", fontFamily: "'Barlow Condensed',sans-serif", fontWeight: 600, textTransform: "uppercase" }}>💳 Payment</p>
                   <p style={{ color: "#555", fontSize: "0.8rem", marginTop: "0.5rem" }}>Demo mode — no real payment required</p>
                 </div>
 
-                <button type="submit" disabled={loading} style={{ width: "100%", background: loading ? "#888" : "#e8ff00", color: "#000", fontFamily: "'Barlow Condensed',sans-serif", fontWeight: 700, fontSize: "1rem", textTransform: "uppercase", letterSpacing: "0.1em", padding: "1rem", border: "none", cursor: loading ? "wait" : "pointer", clipPath: "polygon(0 0,calc(100% - 8px) 0,100% 8px,100% 100%,8px 100%,0 calc(100% - 8px))" }}>
-                  {loading ? "Placing Order..." : `Place Order — $${grandTotal}`}
+                <button type="submit" disabled={loading}
+                  style={{ width: "100%", background: loading ? "#888" : "#e8ff00", color: "#000", fontFamily: "'Barlow Condensed',sans-serif", fontWeight: 700, fontSize: "1rem", textTransform: "uppercase", letterSpacing: "0.1em", padding: "1rem", border: "none", cursor: loading ? "wait" : "pointer", clipPath: "polygon(0 0,calc(100% - 8px) 0,100% 8px,100% 100%,8px 100%,0 calc(100% - 8px))" }}>
+                  {loading ? "Placing Order..." : `Place Order — EGP ${Math.round(grandTotal).toLocaleString()}`}
                 </button>
               </form>
             </div>
@@ -107,11 +115,11 @@ export default function CheckoutPage() {
                     <p style={{ fontFamily: "'Barlow Condensed',sans-serif", fontSize: "0.85rem", fontWeight: 700, textTransform: "uppercase", color: "#f0f0f0" }}>{item.name}</p>
                     <p style={{ color: "#555", fontSize: "0.75rem", fontFamily: "'Barlow Condensed',sans-serif", textTransform: "uppercase" }}>Size: {item.size} × {item.quantity}</p>
                   </div>
-                  <span style={{ color: "#e8ff00", fontFamily: "'Barlow Condensed',sans-serif", fontWeight: 700, fontSize: "0.9rem" }}>EGP {Math.round((item.price * item.quantity)).toLocaleString()}</span>
+                  <span style={{ color: "#e8ff00", fontFamily: "'Barlow Condensed',sans-serif", fontWeight: 700, fontSize: "0.9rem" }}>EGP {Math.round(item.price * item.quantity).toLocaleString()}</span>
                 </div>
               ))}
             </div>
-            {[["Subtotal", `EGP ${Math.round(total).toLocaleString()}`], ["Shipping", shipping === 0 ? "FREE" : `EGP ${shipping.toLocaleString()}`], ["Tax (10%)", `EGP ${Math.round(tax).toLocaleString()}`]].map(([l, v]) => (
+            {[["Subtotal", `EGP ${Math.round(total).toLocaleString()}`], ["Shipping", shipping === 0 ? "FREE" : `EGP ${shipping}`], ["Tax (10%)", `EGP ${tax.toLocaleString()}`]].map(([l, v]) => (
               <div key={l} style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.5rem" }}>
                 <span style={{ color: "#888", fontSize: "0.875rem" }}>{l}</span>
                 <span style={{ color: "#f0f0f0", fontFamily: "'Barlow Condensed',sans-serif", fontWeight: 700 }}>{v}</span>
@@ -120,7 +128,7 @@ export default function CheckoutPage() {
             <div style={{ height: "1px", background: "#2a2a2a", margin: "1rem 0" }} />
             <div style={{ display: "flex", justifyContent: "space-between" }}>
               <span style={{ fontFamily: "'Barlow Condensed',sans-serif", fontWeight: 800, textTransform: "uppercase", fontSize: "1rem", color: "#f0f0f0" }}>TOTAL</span>
-              <span style={{ color: "#e8ff00", fontFamily: "'Barlow Condensed',sans-serif", fontWeight: 900, fontSize: "1.4rem" }}>EGP {grandTotal.toLocaleString()}</span>
+              <span style={{ color: "#e8ff00", fontFamily: "'Barlow Condensed',sans-serif", fontWeight: 900, fontSize: "1.4rem" }}>EGP {Math.round(grandTotal).toLocaleString()}</span>
             </div>
           </div>
         </div>
